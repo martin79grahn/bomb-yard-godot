@@ -1,0 +1,6 @@
+# Godot cache and builds
+.godot/
+export/
+# signing keys never go in the repo
+*.keystore
+*.jks
