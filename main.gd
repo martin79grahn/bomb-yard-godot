@@ -89,21 +89,20 @@ const R_P1 := 2
 const R_P2 := 3
 const R_DRAW := 4
 
-const PANEL := Color("#141a33")
-const CONFETTI := [Color("#8a1010"), Color("#e02a1a"), Color("#ff8a1a"), Color("#4aa6ff"), Color("#ff7aa8"), Color("#2ab04a")]
-const DIR_ROW := [2, 2, 1, 0]       # bomber rows by direction left, right, up, down (right is left flipped)
-const WALK := [1, 0, 2, 0]
+const MON_NAMES := ["KRAX", "ASPS", "YETIS", "IMPS", "ANGELS", "FISH"]
+const CONFETTI := [Color("#ff3b30"), Color("#ff9500"), Color("#ffcc00"), Color("#34c759"), Color("#0a84ff"), Color("#ff2d92")]
 
-# ---------------------------------------------------------------- art
-var tex_tiles: Texture2D = preload("res://assets/tiles.png")
-var tex_items: Texture2D = preload("res://assets/items.png")
-var tex_font: Texture2D = preload("res://assets/font.png")
-var tex_box: Texture2D = preload("res://assets/box.png")
-var tex_bombers: Texture2D = preload("res://assets/bombers.png")
-var tex_monsters: Texture2D = preload("res://assets/monsters.png")
-var tex_bosses: Texture2D = preload("res://assets/bosses.png")
-var tex_logo: Texture2D = preload("res://assets/logo.png")
-var font_order := ""
+# ---------------------------------------------------------------- look
+const W := 1280.0            # the layout is designed for 1280 x 720; wider screens get side margins
+const H := 720.0
+const C_CARD := Color(0.04, 0.06, 0.11, 0.74)
+const C_EDGE := Color(1, 1, 1, 0.14)
+const C_GOLD := Color("#ffc83a")
+const C_DIM := Color("#a9b4cc")
+const SUIT_COL := [Color("#e9edf7"), Color("#e8424f"), Color("#3a8ae8"), Color("#f0b42a")]
+var font_black: Font = preload("res://assets/fonts/NotoSans-Black.ttf")
+var font_bold: Font = preload("res://assets/fonts/NotoSans-Bold.ttf")
+var world
 
 # ---------------------------------------------------------------- arena state
 var cell := PackedByteArray()
@@ -214,7 +213,8 @@ var on_title_backdrop := false
 var pad := [0, 0]
 var pad_old := [0, 0]
 var pad_new := [0, 0]
-var ox := 0                  # left edge of the 320-pixel game screen inside a wider viewport
+var ox := 0                  # left edge of the 1280-wide layout inside a wider viewport
+var map_serial := 0          # bumped by build_map, so the 3D view knows to start over
 
 var audio
 var touch
@@ -222,7 +222,6 @@ var touch
 
 # ================================================================ setup
 func _ready() -> void:
-	font_order = FileAccess.get_file_as_string("res://assets/font_order.txt")
 	cell.resize(CELLS)
 	flame.resize(CELLS)
 	bfire.resize(CELLS)
@@ -230,6 +229,9 @@ func _ready() -> void:
 		a.resize(MAX_BOMBS)
 	cf_x.resize(32)
 	cf_y.resize(32)
+	world = preload("res://world.gd").new()
+	world.main = self
+	add_child(world)
 	audio = preload("res://audio.gd").new()
 	add_child(audio)
 	touch = Touch.new()
@@ -371,7 +373,7 @@ func _quit_to_title() -> void:
 
 # ================================================================ main loop
 func _physics_process(_delta: float) -> void:
-	ox = int((get_viewport_rect().size.x - 320) / 2)
+	ox = int((get_viewport_rect().size.x - W) / 2)
 	frame_count = (frame_count + 1) & 0xFFFF
 	_read_pads()
 	var start: bool = ((pad_new[0] | pad_new[1]) & K_START) != 0
@@ -437,6 +439,7 @@ func hide_items(it: int, n: int) -> void:
 
 
 func build_map() -> void:
+	map_serial += 1
 	for k in CELLS:
 		var cx := k & 15
 		var cy := k >> 4
@@ -939,8 +942,8 @@ func message(lines: Array, frames: int, then: Callable) -> void:
 	state = "message"
 	if confetti:
 		for k in 32:
-			cf_x[k] = rand8() + 32
-			cf_y[k] = -(rand8() % 224)
+			cf_x[k] = randi() % int(W)
+			cf_y[k] = -(randi() % int(H))
 	_swallow_pads()
 
 
@@ -952,11 +955,10 @@ func _end_message() -> void:
 
 func _confetti_frame() -> void:
 	for k in 32:
-		cf_y[k] += 1 + (k & 1)
-		if (frame_count & 3) == 0:
-			cf_x[k] += 1 if (k & 2) else -1
-		if cf_y[k] > 224:
-			cf_y[k] = -8
+		cf_y[k] += 3 + 2 * (k & 1)
+		cf_x[k] += 1 if (k & 2) else -1
+		if cf_y[k] > H:
+			cf_y[k] = -20
 
 
 func _go_play() -> void:
@@ -1159,263 +1161,257 @@ func change_option(row: int, t: int) -> void:
 			_: next_char(row - 4, 3 if t == 2 else 1)
 
 
-# ================================================================ drawing
+# ================================================================ drawing (the 2D layer over the 3D view)
 func _draw() -> void:
-	var vw := get_viewport_rect().size.x
-	draw_rect(Rect2(0, 0, vw, 224), PANEL)
 	draw_set_transform(Vector2(ox, 0))
 	match state:
-		"title":
-			_draw_arena(0)
-			_draw_title()
-		"options":
-			_draw_arena(0)
-			_draw_options()
+		"title": _draw_title()
+		"options": _draw_options()
 		_:
 			_draw_hud()
-			_draw_arena(LEVEL_PAL[level])
-			if sprites_on:
-				_draw_sprites()
 			if state == "paused":
-				text(AX + 13, 14, "PAUSE", true)
+				_card_text(Rect2(440, 270, 400, 170), "PAUSED", ["Press Start to keep playing", "Esc / Back: quit to the title"])
 			if not msg_lines.is_empty():
-				box(AX + 2, 10, 28, 9)
-				for i in msg_lines.size():
-					text_c(12 + i * 2, msg_lines[i], i == 0)
+				var rest: Array = msg_lines.slice(1)
+				_card_text(Rect2(300, 240, 680, 230), msg_lines[0], rest)
 			if confetti:
 				for k in 32:
-					draw_rect(Rect2(cf_x[k] + 2, cf_y[k] + 2, 3, 3), CONFETTI[k % 6])
+					var c: Color = CONFETTI[k % 6]
+					var a := frame_count * 0.1 + k
+					draw_set_transform(Vector2(ox + cf_x[k], cf_y[k]), a)
+					draw_rect(Rect2(-6, -3, 12, 6), c)
+				draw_set_transform(Vector2(ox, 0))
 	draw_set_transform(Vector2.ZERO)
 
 
-func _draw_arena(pal_row: int) -> void:
-	for ci in CELLS:
-		var cx := ci & 15
-		var cy := ci >> 4
-		var pos := Vector2(AX * 8 + cx * 16, AY * 8 + cy * 16)
-		var col: int
-		if cell_type(ci) != FLOOR:
-			col = 8 if cell_type(ci) == CEMENT else 9
-		else:
-			var s := (1 if cy and is_block(ci - GW) else 0) | (2 if cx and is_block(ci - 1) else 0)
-			col = (((cx * 7 + cy * 3) >> 1) & 1) * 4 + s
-		draw_texture_rect_region(tex_tiles, Rect2(pos, Vector2(16, 16)), Rect2(col * 16, pal_row * 16, 16, 16))
-		_draw_obj(ci, pos)
+# ---------------------------------------------------------------- building blocks
+var _sb_cache := {}
+func card(r: Rect2, bg := C_CARD, edge := C_EDGE, radius := 18, shadow := true) -> void:
+	var key := "%s%s%d%s" % [bg, edge, radius, shadow]
+	if not _sb_cache.has(key):
+		var sb := StyleBoxFlat.new()
+		sb.bg_color = bg
+		sb.border_color = edge
+		sb.set_border_width_all(2)
+		sb.set_corner_radius_all(radius)
+		sb.anti_aliasing = true
+		if shadow:
+			sb.shadow_color = Color(0, 0, 0, 0.35)
+			sb.shadow_size = 14
+			sb.shadow_offset = Vector2(0, 6)
+		_sb_cache[key] = sb
+	_sb_cache[key].draw(get_canvas_item(), r)
 
 
-## A flame piece, a bomb, a power-up or nothing (draw_obj).
-func _draw_obj(ci: int, pos: Vector2) -> void:
-	var col := -1
-	var row := 0
-	if flame[ci]:
-		var sides := (1 if flame[ci - 1] else 0) | (2 if flame[ci + 1] else 0) | (4 if flame[ci - GW] else 0) | (8 if flame[ci + GW] else 0)
-		row = 1 + (2 if flame[ci] < FLAME_LOW else 0) + flame_phase
-		col = sides
-	elif has_bomb(ci):
-		var b := bomb_at(ci)
-		if b_rem[b]:
-			col = 4 + ((frame_count >> 5) & 1)       # its lamp blinks
-		else:
-			var fz := b_fuse[b]
-			col = ((frame_count >> 3) & 1) + (2 if fz < 60 and ((fz / 5) & 1) else 0)
-	elif cell_type(ci) != FLOOR or not item(ci):
-		return
-	elif is_life(ci): col = 9
-	elif is_pen(ci): col = 10
-	elif is_rem(ci): col = 11
-	elif item(ci) == IT_SHOE: col = 6
-	elif item(ci) == IT_FIRE: col = 7
-	else: col = 8
-	draw_texture_rect_region(tex_items, Rect2(pos, Vector2(16, 16)), Rect2(col * 16, row * 16, 16, 16))
+func label(s: String, pos: Vector2, size: int, c := Color.WHITE, align := HORIZONTAL_ALIGNMENT_LEFT, f: Font = null, width := -1.0) -> void:
+	f = f if f else font_bold
+	var w := width if width > 0 else 1000.0
+	var x := pos.x
+	if align == HORIZONTAL_ALIGNMENT_CENTER:
+		x -= w / 2
+	elif align == HORIZONTAL_ALIGNMENT_RIGHT:
+		x -= w
+	draw_string_outline(f, Vector2(x, pos.y), s, align, w, size, maxi(2, size / 7), Color(0, 0, 0, 0.55 * c.a))
+	draw_string(f, Vector2(x, pos.y), s, align, w, size, c)
 
 
-func item_icon(tx: int, ty: int, col: int) -> void:
-	draw_texture_rect_region(tex_items, Rect2(tx * 8, ty * 8, 16, 16), Rect2(col * 16, 0, 16, 16))
+func _card_text(r: Rect2, title: String, lines: Array) -> void:
+	card(r)
+	label(title, Vector2(r.get_center().x, r.position.y + 72), 44, C_GOLD, HORIZONTAL_ALIGNMENT_CENTER, font_black, r.size.x)
+	for i in lines.size():
+		label(str(lines[i]), Vector2(r.get_center().x, r.position.y + 124 + i * 38), 26,
+			Color.WHITE if i == 0 else C_DIM, HORIZONTAL_ALIGNMENT_CENTER, font_bold, r.size.x)
 
 
-func _bomber(row: int, dir: int, f: int, x: float, y: float) -> void:
-	var flip := dir == 1
-	var src := Rect2((DIR_ROW[dir] * 3 + f) * 16, row * 24, 16, 24)
-	draw_texture_rect_region(tex_bombers, Rect2(x, y, -16 if flip else 16, 24), src)
-
-
-func _draw_bomber(p: int) -> void:
-	if not palive[p] and not (pdeath[p] & 4):
-		return
-	if p and boss and palive[1] and (binv & 4):
-		return
-	var x := AX * 8 + px[p]
-	var y := AY * 8 + py[p]
-	if p and boss and bi() != FINAL:     # a creature boss: 32 x 24, two frames as it moves
-		if pdir[1] < 2:
-			shark_fl = pdir[1] == 1
-		var f := ((frame_count >> 3) & 1) if pmoving[1] else 0
-		var src := Rect2((f + (2 if boss_angry() else 0)) * 32, bi() * 24, 32, 24)
-		draw_texture_rect_region(tex_bosses, Rect2(x - 8, y - 4, -32 if shark_fl else 32, 24), src)
-		return
-	var f2: int = WALK[pframe[p]] if pmoving[p] else 0
-	var row: int = opt_char[p]
-	if p and boss:
-		row = 5 if boss_angry() else 4
-	_bomber(row, pdir[p], f2, x, y - 8)
-
-
-func _draw_sprites() -> void:
-	if py[1] > py[0]:
-		_draw_bomber(0); _draw_bomber(1)
-	else:
-		_draw_bomber(1); _draw_bomber(0)
-	for m in NMON:
-		if not malive[m] and not (mdeath[m] & 4):
-			continue
-		var f: int
-		if level == 0 or level == SEA:
-			f = (1 + ((mbob[m] >> 3) & 1)) if mmoving[m] else 0
-		else:
-			f = (mbob[m] >> 4) & 1
-		var flip := mdir[m] == 1
-		draw_texture_rect_region(tex_monsters, Rect2(AX * 8 + mx[m], AY * 8 + my[m], -16 if flip else 16, 16),
-			Rect2(f * 16, level * 16, 16, 16))
-
-
-func _draw_hud() -> void:
-	for y in range(AY, 28):
-		draw_texture_rect_region(tex_box, Rect2((AX - 1) * 8, y * 8, 8, 8), Rect2(9 * 8, 0, 8, 8))
-		draw_texture_rect_region(tex_box, Rect2((AX + 32) * 8, y * 8, 8, 8), Rect2(10 * 8, 0, 8, 8))
-	if nplayers == 1:
-		if boss:
-			text(4, 0, "BOSS FIGHT", true)
-		else:
-			text(4, 0, "LEVEL", true)
-			text(10, 0, str(level + 1), true)
-			text(12, 0, LEVEL_NAME[level], false)
-		if debug:
-			text(25, 0, "DEBUG", true)
-	else:
-		text(4, 0, LEVEL_NAME[level], true)
-		text(17, 0, "FIRST TO", false)
-		text(25, 0, " %d" % win_target, true)
-	var show := not (secs <= 10 and (frame_count & 16))
-	if show:
-		text(32, 0, "%d:%02d" % [secs / 60, secs % 60], secs <= STRESS_SECS)
-	# left panel: player 1
-	text(0, 3, CHAR_NAME[opt_char[0]], true)
-	item_icon(1, 9, 7)
-	item_icon(1, 13, 6)
-	_hud_stats(0)
-	if nplayers == 1:
-		item_icon(1, 17, 9)
-		hud_num(0, 19, lives)
-		if boss:
-			text(36, 3, "BOSS", true)
-			if bi() != FINAL:      # its head
-				draw_texture_rect_region(tex_bosses, Rect2(37 * 8, 5 * 8, 16, 16),
-					Rect2((2 if boss_angry() else 0) * 32, bi() * 24, 16, 16))
+## Small vector icons for the panels: bomb, fire, shoe, life, pen, rem, foe, boss.
+func icon(kind: String, c: Vector2, s: float) -> void:
+	match kind:
+		"bomb", "pen", "rem":
+			draw_circle(c + Vector2(0, 2), s * 0.42, Color("#0d0f18"))
+			draw_circle(c + Vector2(0, 2), s * 0.38, Color("#2a3048"))
+			draw_circle(c + Vector2(-s * 0.13, -s * 0.08), s * 0.1, Color(1, 1, 1, 0.55))
+			draw_rect(Rect2(c + Vector2(-s * 0.1, -s * 0.44), Vector2(s * 0.2, s * 0.1)), Color("#5a6488"))
+			if kind == "bomb":
+				draw_line(c + Vector2(0, -s * 0.44), c + Vector2(s * 0.22, -s * 0.6), Color("#c08a50"), 3.0)
+				draw_circle(c + Vector2(s * 0.25, -s * 0.62), s * 0.1, Color("#ffd040"))
+			elif kind == "pen":
+				draw_line(c + Vector2(-s * 0.55, s * 0.05), c + Vector2(s * 0.45, s * 0.05), Color("#ff3a2a"), 4.0)
+				draw_colored_polygon(PackedVector2Array([c + Vector2(s * 0.6, s * 0.05), c + Vector2(s * 0.38, -s * 0.12), c + Vector2(s * 0.38, s * 0.22)]), Color("#ffd02a"))
 			else:
-				draw_texture_rect_region(tex_bombers, Rect2(37 * 8, 5 * 8, 16, 16), Rect2(0, (5 if boss_angry() else 4) * 24, 16, 16))
-			hud_num(36, 8, BOSS_HP[bi()] - bhits)
-		else:
-			text(36, 3, "FOES", true)
-			_monster_icon(37, 4)
-			hud_num(36, 7, malive[0] + malive[1])
+				draw_line(c + Vector2(0, -s * 0.44), c + Vector2(0, -s * 0.7), Color("#c0c4d0"), 2.0)
+				draw_circle(c + Vector2(0, -s * 0.72), s * 0.07, Color("#ff3a2a"))
+				for k in 2:
+					draw_arc(c + Vector2(0, -s * 0.72), s * (0.2 + k * 0.14), -2.4, -0.7, 8, Color("#5ad8ff"), 2.0)
+		"fire":
+			var pts := PackedVector2Array()
+			for k in 20:
+				var a := k / 20.0 * TAU
+				var r := s * 0.38
+				var p := Vector2(sin(a) * r, -cos(a) * r)
+				if p.y < 0:
+					p.x *= 1.0 + p.y / (s * 0.5)
+					p.y *= 1.7
+				pts.append(c + p + Vector2(0, s * 0.12))
+			draw_colored_polygon(pts, Color("#ff6a1a"))
+			draw_circle(c + Vector2(0, s * 0.2), s * 0.18, Color("#ffd040"))
+		"shoe":
+			draw_colored_polygon(PackedVector2Array([c + Vector2(-s * 0.4, -s * 0.3), c + Vector2(-s * 0.1, -s * 0.3), c + Vector2(0, -s * 0.05),
+				c + Vector2(s * 0.45, s * 0.05), c + Vector2(s * 0.45, s * 0.22), c + Vector2(-s * 0.4, s * 0.22)]), Color("#e8323a"))
+			draw_rect(Rect2(c + Vector2(-s * 0.42, s * 0.22), Vector2(s * 0.9, s * 0.1)), Color.WHITE)
+			for k in 3:
+				draw_line(c + Vector2(-s * 0.7, -s * 0.15 + k * s * 0.15), c + Vector2(-s * 0.5, -s * 0.15 + k * s * 0.15), Color(1, 1, 1, 0.7), 2.0)
+		"life":
+			var pts := PackedVector2Array()
+			for k in 32:
+				var tt := k / 32.0 * TAU
+				pts.append(c + Vector2(16 * pow(sin(tt), 3), -(13 * cos(tt) - 5 * cos(2 * tt) - 2 * cos(3 * tt) - cos(4 * tt))) * s * 0.026)
+			draw_colored_polygon(pts, Color("#ff2d55"))
+			draw_circle(c + Vector2(-s * 0.16, -s * 0.12), s * 0.07, Color(1, 1, 1, 0.6))
+
+
+func stat_row(y: float, x: float, kind: String, value: String, note := "") -> void:
+	icon(kind, Vector2(x + 26, y - 10), 34)
+	label(value, Vector2(x + 58, y), 30, Color.WHITE, HORIZONTAL_ALIGNMENT_LEFT, font_black)
+	if note != "":
+		label(note, Vector2(x + 110, y - 2), 18, C_GOLD)
+
+
+# ---------------------------------------------------------------- the game's HUD
+func _draw_hud() -> void:
+	# top bar: the level on the left, the clock on the right
+	var title := ""
+	if nplayers == 1:
+		title = ("BOSS FIGHT  ·  " + BOSS_NAME[bi()]) if boss else ("LEVEL %d  ·  %s" % [level + 1, LEVEL_NAME[level]])
 	else:
-		text(36, 3, CHAR_NAME[opt_char[1]], true)
-		item_icon(37, 9, 7)
-		item_icon(37, 13, 6)
-		_hud_stats(1)
-		text(0, 21, "WINS", false)
-		text(36, 21, "WINS", false)
-		text(0, 23, " %d/%d" % [wins[0], win_target], true)
-		text(36, 23, " %d/%d" % [wins[1], win_target], true)
-		if opt_monsters:
-			_monster_icon(37, 17)
+		title = "%s  ·  FIRST TO %d" % [LEVEL_NAME[level], win_target]
+	card(Rect2(20, 14, 600, 52), C_CARD, C_EDGE, 26, false)
+	label(title, Vector2(44, 50), 26, Color.WHITE, HORIZONTAL_ALIGNMENT_LEFT, font_black)
+	if debug and nplayers == 1:
+		card(Rect2(636, 14, 120, 52), Color(0.5, 0.1, 0.4, 0.8), C_EDGE, 26, false)
+		label("DEBUG", Vector2(696, 50), 22, Color.WHITE, HORIZONTAL_ALIGNMENT_CENTER, font_black, 120)
+	var hurry := secs <= STRESS_SECS
+	var blink := secs <= 10 and (frame_count & 16)
+	card(Rect2(1110, 14, 150, 52), Color(0.6, 0.08, 0.06, 0.85) if hurry else C_CARD, C_EDGE, 26, false)
+	if not blink:
+		label("%d:%02d" % [secs / 60, secs % 60], Vector2(1185, 52), 34, C_GOLD if hurry else Color.WHITE, HORIZONTAL_ALIGNMENT_CENTER, font_black, 150)
+	# left: player 1
+	_player_card(0, Rect2(20, 86, 210, 370 if nplayers == 1 else 400))
+	if nplayers == 2:
+		_player_card(1, Rect2(1050, 86, 210, 400))
+	elif boss:
+		var r := Rect2(1050, 86, 210, 230)
+		card(r)
+		label("BOSS", Vector2(r.position.x + 22, r.position.y + 42), 22, C_DIM)
+		label(BOSS_NAME[bi()].trim_prefix("THE "), Vector2(r.position.x + 22, r.position.y + 82), 26, Color("#ff6a5a") if boss_angry() else Color.WHITE, HORIZONTAL_ALIGNMENT_LEFT, font_black, 180)
+		var hp: int = BOSS_HP[bi()] - bhits
+		label("HITS LEFT", Vector2(r.position.x + 22, r.position.y + 128), 18, C_DIM)
+		for k in BOSS_HP[bi()]:
+			var pr := Rect2(r.position.x + 22 + (k % 4) * 42, r.position.y + 144 + (k / 4) * 36, 34, 26)
+			card(pr, Color("#ff3b30") if k < hp else Color(1, 1, 1, 0.08), Color(1, 1, 1, 0.25), 8, false)
+	else:
+		var r := Rect2(1050, 86, 210, 200)
+		card(r)
+		label("FOES", Vector2(r.position.x + 22, r.position.y + 42), 22, C_DIM)
+		label(MON_NAMES[level], Vector2(r.position.x + 22, r.position.y + 80), 26, Color.WHITE, HORIZONTAL_ALIGNMENT_LEFT, font_black)
+		label(str(malive[0] + malive[1]), Vector2(r.position.x + 22, r.position.y + 158), 64, C_GOLD, HORIZONTAL_ALIGNMENT_LEFT, font_black)
+		label("LEFT", Vector2(r.position.x + 90, r.position.y + 154), 22, C_DIM)
 
 
-func _monster_icon(tx: int, ty: int) -> void:
-	draw_texture_rect_region(tex_monsters, Rect2(tx * 8, ty * 8, 16, 16), Rect2(0, level * 16, 16, 16))
-
-
-func _hud_stats(p: int) -> void:
-	var x := 36 if p else 0
-	item_icon(x + 1, 5, 10 if ppen[p] else 8)   # the penetrator shows in place of the bomb
-	hud_num(x, 7, pbombs[p])
-	hud_num(x, 11, pfire[p])
-	hud_num(x, 15, pups[p])
+func _player_card(p: int, r: Rect2) -> void:
+	card(r)
+	var x := r.position.x + 14
+	draw_circle(Vector2(x + 16, r.position.y + 34), 11, SUIT_COL[opt_char[p]])
+	draw_arc(Vector2(x + 16, r.position.y + 34), 11, 0, TAU, 24, Color(1, 1, 1, 0.6), 2.0)
+	label(CHAR_NAME[opt_char[p]].strip_edges(), Vector2(x + 36, r.position.y + 44), 28, Color.WHITE, HORIZONTAL_ALIGNMENT_LEFT, font_black)
+	var y := r.position.y + 104
+	stat_row(y, x, "pen" if ppen[p] else "bomb", str(pbombs[p]), "PEN" if ppen[p] else "")
+	stat_row(y + 60, x, "fire", str(pfire[p]))
+	stat_row(y + 120, x, "shoe", "%d/%d" % [pups[p], MAX_SPEEDUPS])
 	if prem[p]:
-		item_icon(x + 1, 25, 11)
+		stat_row(y + 180, x, "rem", "REMOTE")
+	if nplayers == 1:
+		stat_row(y + 240, x, "life", str(lives))
+	else:
+		label("WINS", Vector2(x + 8, r.end.y - 52), 20, C_DIM)
+		label("%d / %d" % [wins[p], win_target], Vector2(x + 8, r.end.y - 16), 32, C_GOLD, HORIZONTAL_ALIGNMENT_LEFT, font_black)
 
 
-func hud_num(tx: int, ty: int, v: int) -> void:
-	text(tx, ty, " %d" % v, false)
+# ---------------------------------------------------------------- title and options
+func title_item_rect(i: int) -> Rect2:
+	return Rect2(ox + 470, 300 + i * 74, 340, 60)
 
 
 func _draw_title() -> void:
-	draw_texture(tex_logo, Vector2(16, 16))
-	box(8, 11, 24, 13)
-	text(16, 13, "1 PLAYER", false)
-	text(16, 15, "2 PLAYERS", false)
-	text(16, 17, "BOSS RUSH", false)
-	var t := 2 if rush else nplayers - 1
-	text(14, 13 + t * 2, ">", true)
-	text(10, 19, "BEAT ALL SEVEN BOSSES" if rush else ("6 LEVELS AND 7 BOSSES" if nplayers == 1 else " BLAST YOUR FRIEND!  "), false)
-	text(13, 21, "TAP START" if touch.enabled else "PRESS START", true)
+	var c := Vector2(W / 2, 180)
+	for k in 3:          # a deep drop shadow, then the logo with an outline
+		label("BOMB YARD", c + Vector2(0, 14 - k * 4), 130, Color(0.25, 0.02, 0.0, 0.5), HORIZONTAL_ALIGNMENT_CENTER, font_black, 1100)
+	draw_string_outline(font_black, c + Vector2(-550, 0), "BOMB YARD", HORIZONTAL_ALIGNMENT_CENTER, 1100, 130, 18, Color("#5a0a04"))
+	draw_string(font_black, c + Vector2(-550, 0), "BOMB YARD", HORIZONTAL_ALIGNMENT_CENTER, 1100, 130, Color("#ffb21a"))
+	label("6 levels  ·  7 bosses  ·  2 players", Vector2(W / 2, 236), 22, Color(1, 1, 1, 0.9), HORIZONTAL_ALIGNMENT_CENTER, font_bold, 800)
+	var names := ["1 PLAYER", "2 PLAYERS", "BOSS RUSH"]
+	var sel := 2 if rush else nplayers - 1
+	for i in 3:
+		var r := title_item_rect(i)
+		r.position.x -= ox
+		card(r, Color(1.0, 0.72, 0.1, 0.92) if i == sel else C_CARD, Color(1, 1, 1, 0.5) if i == sel else C_EDGE, 30)
+		label(names[i], Vector2(W / 2, r.position.y + 42), 28, Color("#1a1206") if i == sel else Color.WHITE, HORIZONTAL_ALIGNMENT_CENTER, font_black, 340)
+	var sub := "Beat all seven bosses in a row" if rush else ("Six levels and seven bosses" if nplayers == 1 else "Blast your friend!")
+	label(sub, Vector2(W / 2, 548), 24, Color.WHITE, HORIZONTAL_ALIGNMENT_CENTER, font_bold, 800)
+	if (frame_count >> 5) & 1:
+		label("TAP A MODE TO START" if touch.enabled else "PRESS ENTER TO START", Vector2(W / 2, 600), 26, C_GOLD, HORIZONTAL_ALIGNMENT_CENTER, font_black, 800)
 	if debug:
-		text(16, 22, "DEBUG ON", false)
-	text(2, 26, "C: DEBUG MODE" if not touch.enabled else "", false)
-	text(25, 26, "MGRAHN 2026", false)
-	# a Krax chases a bomber along the bottom of the box
-	var w := (title_walk >> 3) & 3
-	_bomber(opt_char[0], 1, WALK[w], title_kx + 24, 184)
-	draw_texture_rect_region(tex_monsters, Rect2(title_kx - 4 + 16, 192, -16, 16), Rect2((1 + ((title_walk >> 3) & 1)) * 16, 0, 16, 16))
+		label("DEBUG ON", Vector2(W / 2, 640), 22, Color("#ff7ad0"), HORIZONTAL_ALIGNMENT_CENTER, font_black, 400)
+	if not touch.enabled:
+		label("C: debug mode   ·   M: sound   ·   F11: full screen", Vector2(30, 700), 18, Color(1, 1, 1, 0.75))
+	label("MGRAHN 2026", Vector2(W - 30, 700), 18, Color(1, 1, 1, 0.75), HORIZONTAL_ALIGNMENT_RIGHT)
+
+
+func option_row_rect(r: int) -> Rect2:
+	return Rect2(ox + 360, 200 + r * 58, 560, 50)
+
+
+func opt_start_rect() -> Rect2:
+	return Rect2(ox + 360, 584 if nplayers == 1 else 584, 330, 60)
+
+
+func opt_back_rect() -> Rect2:
+	return Rect2(ox + 710, 584, 210, 60)
 
 
 func _draw_options() -> void:
-	box(6, 5, 28, 20)
-	text_c(7, "BOSS RUSH OPTIONS" if rush else ("1 PLAYER OPTIONS" if nplayers == 1 else "2 PLAYER OPTIONS"), true)
+	card(Rect2(330, 90, 620, 580))
+	label("BOSS RUSH" if rush else ("1 PLAYER" if nplayers == 1 else "2 PLAYERS"), Vector2(W / 2, 160), 44, C_GOLD, HORIZONTAL_ALIGNMENT_CENTER, font_black, 600)
 	var labels: Array
 	var values: Array
-	var top: int
 	if nplayers == 1:
-		labels = ["LIVES", "ITEMS", "PLAYER", "DEBUG"]
-		values = [str(WIN_CHOICES[opt_lives]), str(opt_items), CHAR_NAME[opt_char[0]], "ON" if debug else "OFF"]
-		top = 11
+		labels = ["Lives", "Power-ups", "Player", "Debug"]
+		values = [str(WIN_CHOICES[opt_lives]), str(opt_items), CHAR_NAME[opt_char[0]].strip_edges(), "On" if debug else "Off"]
 	else:
-		labels = ["LEVEL", "MONSTERS", "WINS", "ITEMS", "P1", "P2"]
-		values = [LEVEL_NAME[opt_level], "ON" if opt_monsters else "OFF", str(WIN_CHOICES[opt_wins]), str(opt_items),
-			CHAR_NAME[opt_char[0]], CHAR_NAME[opt_char[1]]]
-		top = 9
+		labels = ["Level", "Monsters", "Wins needed", "Power-ups", "Player 1", "Player 2"]
+		values = [LEVEL_NAME[opt_level], "On" if opt_monsters else "Off", str(WIN_CHOICES[opt_wins]), str(opt_items),
+			CHAR_NAME[opt_char[0]].strip_edges(), CHAR_NAME[opt_char[1]].strip_edges()]
 	for r in labels.size():
-		text(10, top + r * 2, ">" if opt_row == r else " ", true)
-		text(12, top + r * 2, labels[r], false)
-		text(22, top + r * 2, values[r], true)
-	if touch.enabled:
-		text(10, 21, "TAP A ROW TO CHANGE", false)
-		text(10, 23, "START PLAY  B BACK", false)
-	else:
-		text(10, 21, "UP/DOWN  CHOOSE", false)
-		text(10, 22, "LEFT/RIGHT  CHANGE", false)
-		text(10, 23, "ENTER PLAY  ESC BACK", false)
-	# the chosen characters stand next to their names
-	for p in nplayers:
-		_bomber(opt_char[p], 3, 0, 256 if p else 228, (15 if nplayers == 1 else 17 + p * 2) * 8 - 12)
-
-
-# ---------------------------------------------------------------- text and boxes
-func text(tx: int, ty: int, s: String, yellow: bool) -> void:
-	var y := 1 if yellow else 0
-	for i in s.length():
-		var g := font_order.find(s[i].to_upper())
-		if g <= 0:
-			continue
-		draw_texture_rect_region(tex_font, Rect2((tx + i) * 8, ty * 8, 8, 8), Rect2(g * 8, y * 8, 8, 8))
-
-
-func text_c(ty: int, s: String, yellow: bool) -> void:
-	text(AX + 16 - (s.length() >> 1), ty, s, yellow)
-
-
-func box(tx: int, ty: int, w: int, h: int) -> void:
-	for j in h:
-		for i in w:
-			var t := (0 if j == 0 else (6 if j == h - 1 else 3)) + (0 if i == 0 else (2 if i == w - 1 else 1))
-			draw_texture_rect_region(tex_box, Rect2((tx + i) * 8, (ty + j) * 8, 8, 8), Rect2(t * 8, 0, 8, 8))
+		var rr := option_row_rect(r)
+		rr.position.x -= ox
+		var on := r == opt_row
+		card(rr, Color(1, 1, 1, 0.14) if on else Color(1, 1, 1, 0.04), Color(1, 0.8, 0.3, 0.8) if on else Color(1, 1, 1, 0.08), 14, false)
+		label(labels[r], Vector2(rr.position.x + 22, rr.position.y + 34), 24, Color.WHITE if on else C_DIM)
+		var vx := rr.end.x - 24
+		label(str(values[r]).to_upper(), Vector2(vx - 40, rr.position.y + 35), 26, C_GOLD if on else Color.WHITE, HORIZONTAL_ALIGNMENT_RIGHT, font_black, 300)
+		if on:
+			label("‹", Vector2(vx - 250, rr.position.y + 34), 30, C_GOLD, HORIZONTAL_ALIGNMENT_CENTER, font_black, 30)
+			label("›", Vector2(vx - 6, rr.position.y + 34), 30, C_GOLD, HORIZONTAL_ALIGNMENT_CENTER, font_black, 30)
+		var char_row := (nplayers == 1 and r == 2) or (nplayers == 2 and r >= 4)
+		if char_row:
+			var p := 0 if nplayers == 1 else r - 4
+			draw_circle(Vector2(rr.end.x - 220, rr.position.y + 25), 12, SUIT_COL[opt_char[p]])
+	var sr := opt_start_rect()
+	sr.position.x -= ox
+	card(sr, Color(1.0, 0.72, 0.1, 0.95), Color(1, 1, 1, 0.5), 30)
+	label("START", Vector2(sr.get_center().x, sr.position.y + 42), 30, Color("#1a1206"), HORIZONTAL_ALIGNMENT_CENTER, font_black, sr.size.x)
+	var br := opt_back_rect()
+	br.position.x -= ox
+	card(br, C_CARD, C_EDGE, 30)
+	label("BACK", Vector2(br.get_center().x, br.position.y + 42), 26, Color.WHITE, HORIZONTAL_ALIGNMENT_CENTER, font_black, br.size.x)
+	if not touch.enabled:
+		label("↑↓ choose   ←→ change   Enter start   Esc back", Vector2(W / 2, 700), 18, Color(1, 1, 1, 0.8), HORIZONTAL_ALIGNMENT_CENTER, font_bold, 900)

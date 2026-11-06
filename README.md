@@ -2,17 +2,17 @@
 
 Mega Drive-versionen av Bomb Yard ([bomb-yard-nes](https://github.com/martin79grahn/bomb-yard-nes), mappen `md/`) gjord om i Godot 4.5, så att den går att spela på **Android-telefonen**, i Linux och i Windows.
 
-Reglerna är flyttade funktion för funktion från Mega Drive-spelets `md/src/main.c`, med samma siffror: 60 bilder i sekunden, 16 pixlar stora rutor, stubintid, eldens längd, bossarnas träffar, bomber, räckvidd och fart. Grafiken, musiken och ljudeffekterna är Mega Drive-versionens egna:
+Reglerna är flyttade funktion för funktion från Mega Drive-spelets `md/src/main.c`, med samma siffror: 60 bilder i sekunden, 16 pixlar stora rutor, stubintid, eldens längd, bossarnas träffar, bomber, räckvidd och fart. Musiken och ljudeffekterna är Mega Drive-versionens egna, men grafiken är helt ny:
 
-- **Grafiken** ritas av Mega Drive-verktyget `md/tools/make_gfx.py` (och `tools/creatures.py`). `tools/export_art.py` här anropar dess egna ritfunktioner och sparar bilderna som PNG i `assets/`, i Mega Drive-färger (3 bitar per färgkanal).
+- **Grafiken** är modern 3D med realistiskt ljus. Banan ses snett uppifrån, med solljus och skuggor, ambient occlusion, glöd och reflektioner, och varje bana har egen himmel, egen dimma och eget ljus. Golv, väggar och sprängbara block har PBR-material (färg, normal map och ojämnhet) som `tools/make_textures.py` räknar fram ur brus, Voronoi-celler och mönster: gräs, krusig sand, sprucken is, vulkansten med glödande lavasprickor, moln och havsbotten; betong, sandsten, isblock, basalt, guldmarmor och korall; trälådor, tegel, snötegel, glödande magma, bomullsmoln och snäckklädd sten. Figurerna, monstren, bossarna, bomberna och power-upsen är 3D-modeller med animationer (`models.gd`): de går, flaxar, viftar på svansen och svävar. Explosionerna är eldstrålar med en shader (`fire.gdshader`), ljusblixtar, gnistor, rök och block som flyger i bitar, och skärmen skakar. Menyerna och panelerna har ny modern design.
 - **Musiken** är Mega Drive-låtarna (VGM-filerna från `md/res/music`), renderade till OGG av `tools/render_music.py` med ffmpeg (libgme spelar FM-synten). Titellåten, de sex banornas låtar, bosslåten och jinglarna när du klarar en bana, vinner eller får game over.
 - **Ljudeffekterna** är Mega Drive-versionens WAV-filer: explosion, bomb, power-up, hjärta, död, bossträff, klocktick och menyljud.
 
-Skärmen är Mega Drive-skärmens 320×224 pixlar, med banan på 16×13 rutor mellan två paneler. På en bredare skärm, till exempel en telefon, blir det plats till vänster och höger, och där sitter knapparna.
+Banan är 16×13 rutor, som på Mega Drive, mellan två paneler. Skärmen är byggd för 1280×720; på en bredare skärm, till exempel en telefon, blir det plats till vänster och höger, och där sitter knapparna. På datorn används renderaren Forward+, på telefonen Mobile (Vulkan).
 
 ## Spela på telefonen (Android)
 
-1. Ladda ner `BombYard-v1.0.0.apk` från [Releases](https://github.com/martin79grahn/bomb-yard-godot/releases) på telefonen.
+1. Ladda ner den senaste `BombYard-v….apk` från [Releases](https://github.com/martin79grahn/bomb-yard-godot/releases) på telefonen.
 2. Öppna filen. Första gången frågar Android om webbläsaren eller filhanteraren får installera okända appar: tillåt det.
 3. Starta **Bomb Yard**. Spelet visas liggande, i helskärm.
 
@@ -78,18 +78,20 @@ GODOT_ANDROID_KEYSTORE_RELEASE_PASSWORD=... \
 godot --headless --export-release "Android" export/BombYard.apk
 ```
 
-Bilderna och musiken i `assets/` är incheckade. Om Mega Drive-versionens grafik eller musik ändras ritas de om från bomb-yard-nes (behöver Python 3 med Pillow och ffmpeg med libgme):
+Texturerna och musiken i `assets/` är incheckade. Texturerna räknas fram igen med `python3 tools/make_textures.py` (behöver Python 3 med NumPy och Pillow). Om Mega Drive-versionens musik eller ljud ändras hämtas de från bomb-yard-nes (behöver ffmpeg med libgme):
 
 ```sh
-python3 tools/export_art.py ~/bomb-yard-nes
 python3 tools/render_music.py ~/bomb-yard-nes
 cp ~/bomb-yard-nes/md/res/sfx/*.wav assets/sfx/
 ```
 
 ## Filer
 
-- `main.gd`: spelet: reglerna (från `main.c`), menyerna, meddelandena, panelerna och all ritning.
+- `main.gd`: spelet: reglerna (från `main.c`), menyerna, meddelandena och panelerna.
+- `world.gd`: 3D-vyn. Den läser spelets läge varje bild och bygger banan, blocken, bomberna, elden, power-upsen och figurerna i 3D, med ljus, himmel, dimma, partiklar och kamera.
+- `models.gd`: 3D-modellerna: de fyra figurerna, den gröna bombaren, de sex monstren, bossarna, bomberna och power-upsen.
+- `fire.gdshader`: explosionernas eld.
 - `touch.gd`: knapparna på skärmen för telefonen.
 - `audio.gd`: musik och ljudeffekter, på tre kanaler som på Mega Drive.
-- `assets/`: bilderna, musiken och ljuden från Mega Drive-versionen.
+- `assets/`: texturerna (`tex/`), typsnitten (Noto Sans, `fonts/`) och musiken och ljuden från Mega Drive-versionen.
 - `tools/`: verktygen som tar fram dem.

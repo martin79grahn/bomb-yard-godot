@@ -5,12 +5,12 @@ extends Node2D
 ## The menus and messages can also be tapped directly.
 ## Shown on phones and tablets; T toggles them on a computer.
 
-const C_DPAD := Color(1, 1, 1, 0.16)
-const C_EDGE := Color(1, 1, 1, 0.35)
-const C_ON := Color(1, 0.88, 0.3, 0.55)
-const C_BOMB := Color(0.88, 0.16, 0.1, 0.5)
-const C_BOOM := Color(0.2, 0.7, 0.3, 0.6)
-const C_OFF := Color(0.5, 0.5, 0.6, 0.35)
+const C_PAD := Color(1, 1, 1, 0.12)
+const C_EDGE := Color(1, 1, 1, 0.4)
+const C_ON := Color(1, 0.8, 0.25, 0.6)
+const C_BOMB := Color(0.9, 0.15, 0.1, 0.55)
+const C_BOOM := Color(0.15, 0.75, 0.3, 0.65)
+const C_OFF := Color(0.4, 0.42, 0.55, 0.4)
 
 var main
 var enabled := false
@@ -34,24 +34,25 @@ func two_sets() -> bool:
 	return main.nplayers == 2 and main.state in ["play", "paused", "message"]
 
 
-## Where each control sits for player p: dpad centre and radius, then the two buttons.
+## Where each control sits for player p: dpad centre and radius, then the two buttons. The
+## controls sit in the side margins of a wide phone screen, or over the panels on a narrower one.
 func layout(p: int) -> Dictionary:
 	var vw: float = get_viewport_rect().size.x
-	var side: float = maxf(34.0, main.ox * 0.5)
+	var side: float = maxf(120.0, main.ox * 0.5)
 	var two := two_sets()
-	var y_pad: float = (56.0 if p == 1 else 170.0) if two else 166.0
-	var r: float = 25.0 if two else 30.0
-	var bx: float = vw - side + 4.0
-	var by: float = (44.0 if p == 1 else 184.0) if two else 182.0
-	var boom_dy: float = 34.0 if p == 1 and two else -34.0
+	var r: float = 80.0 if two else 100.0
+	var y_pad: float = (190.0 if p == 1 else 560.0) if two else 560.0
+	var bx: float = vw - side + 10.0
+	var by: float = (160.0 if p == 1 else 600.0) if two else 590.0
+	var dy: float = 120.0 if p == 1 and two else -120.0
 	return {"dpad": Vector2(side, y_pad), "r": r,
-		"bomb": Vector2(bx, by), "rb": 17.0 if two else 19.0,
-		"boom": Vector2(bx - 20.0, by + boom_dy), "rx": 12.0 if two else 13.0}
+		"bomb": Vector2(bx, by), "rb": 56.0 if two else 66.0,
+		"boom": Vector2(bx - 70.0, by + dy), "rx": 40.0 if two else 46.0}
 
 
 func start_rect() -> Rect2:
 	var vw: float = get_viewport_rect().size.x
-	return Rect2(vw - 36, 2, 33, 13)
+	return Rect2(vw - 150, 80, 130, 48) if main.ox < 150 else Rect2(vw - 150, 14, 130, 52)
 
 
 func _input(event: InputEvent) -> void:
@@ -73,24 +74,25 @@ func _input(event: InputEvent) -> void:
 
 func _touch_down(index: int, pos: Vector2) -> void:
 	if enabled:
-		if start_rect().grow(4).has_point(pos):
+		if start_rect().grow(10).has_point(pos):
 			fingers[index] = {"p": 0, "kind": "btn", "bit": main.K_START}
 			_recompute()
 			return
-		for p in (2 if two_sets() else 1):
-			var l := layout(p)
-			if pos.distance_to(l.dpad) < l.r * 1.7:
-				fingers[index] = {"p": p, "kind": "dpad", "bit": _dpad_bits(p, pos)}
-				_recompute()
-				return
-			if pos.distance_to(l.bomb) < l.rb * 1.4:
-				fingers[index] = {"p": p, "kind": "btn", "bit": main.K_A}
-				_recompute()
-				return
-			if pos.distance_to(l.boom) < l.rx * 1.5:
-				fingers[index] = {"p": p, "kind": "btn", "bit": main.K_B}
-				_recompute()
-				return
+		if main.state in ["play", "paused", "message"]:
+			for p in (2 if two_sets() else 1):
+				var l := layout(p)
+				if pos.distance_to(l.dpad) < l.r * 1.6:
+					fingers[index] = {"p": p, "kind": "dpad", "bit": _dpad_bits(p, pos)}
+					_recompute()
+					return
+				if pos.distance_to(l.bomb) < l.rb * 1.35:
+					fingers[index] = {"p": p, "kind": "btn", "bit": main.K_A}
+					_recompute()
+					return
+				if pos.distance_to(l.boom) < l.rx * 1.45:
+					fingers[index] = {"p": p, "kind": "btn", "bit": main.K_B}
+					_recompute()
+					return
 	_menu_tap(pos)
 
 
@@ -103,7 +105,7 @@ func _recompute() -> void:
 ## 8-way: the finger's angle around the pad's centre, with a small dead zone.
 func _dpad_bits(p: int, pos: Vector2) -> int:
 	var v: Vector2 = pos - layout(p).dpad
-	if v.length() < 6.0:
+	if v.length() < 18.0:
 		return 0
 	var a := fposmod(v.angle(), TAU)
 	var sector := int(round(a / (TAU / 8.0))) % 8   # 0 right, 2 down, 4 left, 6 up
@@ -112,29 +114,26 @@ func _dpad_bits(p: int, pos: Vector2) -> int:
 	return bits[sector]
 
 
-## Taps on the menus and messages, in the MD screen's 8-pixel tiles.
+## Taps on the menus and messages.
 func _menu_tap(pos: Vector2) -> void:
-	var tx := int((pos.x - main.ox) / 8.0)
-	var ty := int(pos.y / 8.0)
 	match main.state:
 		"title":
 			for t in 3:
-				if absi(ty - (13 + t * 2)) <= 1 and tx >= 8 and tx < 32:
+				if main.title_item_rect(t).has_point(pos):
 					main._set_title_choice(t)
 					pulse[0] |= main.K_START
 					return
-			if ty >= 20 and ty <= 22:
-				pulse[0] |= main.K_START
 		"options":
-			var top: int = 11 if main.nplayers == 1 else 9
 			for r in main.options_rows():
-				if absi(ty - (top + r * 2)) <= 0 and tx >= 6 and tx < 34:
+				if main.option_row_rect(r).has_point(pos):
 					main.opt_row = r
 					main.change_option(r, 1)
 					main.audio.play("menu")
 					return
-			if ty >= 22 and ty <= 24 and tx >= 6 and tx < 34:
-				pulse[0] |= main.K_START if tx < 22 else main.K_B
+			if main.opt_start_rect().has_point(pos):
+				pulse[0] |= main.K_START
+			elif main.opt_back_rect().has_point(pos):
+				pulse[0] |= main.K_B
 		"message":
 			if main.msg_frames == 0:
 				pulse[0] |= main.K_START
@@ -149,37 +148,35 @@ func _process(_delta: float) -> void:
 func _draw() -> void:
 	if not enabled:
 		return
-	var sr := start_rect()
-	draw_rect(sr, C_ON if held[0] & main.K_START else C_DPAD)
-	draw_rect(sr, C_EDGE, false, 1.0)
-	_label("START" if main.state != "play" else "PAUSE", sr.get_center())
+	var playing: bool = main.state in ["play", "paused", "message"]
+	if playing:
+		var sr := start_rect()
+		draw_rect(sr, C_ON if held[0] & main.K_START else Color(0.04, 0.06, 0.11, 0.6))
+		draw_rect(sr, C_EDGE, false, 2.0)
+		_label("PAUSE" if main.state == "play" else "START", sr.get_center(), 22)
+	if not playing:
+		return
 	for p in (2 if two_sets() else 1):
 		var l := layout(p)
 		var c: Vector2 = l.dpad
 		var r: float = l.r
-		draw_circle(c, r, C_DPAD)
-		draw_arc(c, r, 0, TAU, 32, C_EDGE, 1.0)
+		draw_circle(c, r, C_PAD)
+		draw_arc(c, r, 0, TAU, 48, C_EDGE, 3.0, true)
 		var dirs := {main.K_UP: Vector2.UP, main.K_DOWN: Vector2.DOWN, main.K_LEFT: Vector2.LEFT, main.K_RIGHT: Vector2.RIGHT}
 		for bit in dirs:
 			var d: Vector2 = dirs[bit]
-			var tip: Vector2 = c + d * r * 0.8
-			var base: Vector2 = c + d * r * 0.45
-			var n := d.orthogonal() * r * 0.2
+			var tip: Vector2 = c + d * r * 0.82
+			var base: Vector2 = c + d * r * 0.42
+			var n := d.orthogonal() * r * 0.22
 			draw_colored_polygon(PackedVector2Array([tip, base + n, base - n]), C_ON if held[p] & bit else C_EDGE)
-		var bomb_on: bool = held[p] & main.K_A
-		draw_circle(l.bomb, l.rb, C_ON if bomb_on else C_BOMB)
-		draw_arc(l.bomb, l.rb, 0, TAU, 32, C_EDGE, 1.0)
-		_label("BOMB", l.bomb)
+		draw_circle(l.bomb, l.rb, C_ON if held[p] & main.K_A else C_BOMB)
+		draw_arc(l.bomb, l.rb, 0, TAU, 48, C_EDGE, 3.0, true)
+		_label("BOMB", l.bomb, 26)
 		var has_remote: bool = main.state == "play" and main.prem[p]
 		draw_circle(l.boom, l.rx, C_ON if held[p] & main.K_B else (C_BOOM if has_remote else C_OFF))
-		draw_arc(l.boom, l.rx, 0, TAU, 24, C_EDGE, 1.0)
-		_label("BOOM", l.boom)
+		draw_arc(l.boom, l.rx, 0, TAU, 40, C_EDGE, 3.0, true)
+		_label("BOOM", l.boom, 18)
 
 
-## Text in the game's font, centred on a point.
-func _label(s: String, at: Vector2) -> void:
-	var x := at.x - s.length() * 4.0
-	for i in s.length():
-		var g: int = main.font_order.find(s[i])
-		if g > 0:
-			draw_texture_rect_region(main.tex_font, Rect2(x + i * 8, at.y - 4, 8, 8), Rect2(g * 8, 0, 8, 8))
+func _label(s: String, at: Vector2, size: int) -> void:
+	draw_string(main.font_black, Vector2(at.x - 100, at.y + size * 0.36), s, HORIZONTAL_ALIGNMENT_CENTER, 200, size, Color.WHITE)
