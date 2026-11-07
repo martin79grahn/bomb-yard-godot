@@ -4,6 +4,7 @@ config_version=5
 
 [application]
 
+config/version="2.1.0"
 config/name="Bomb Yard"
 config/description="Bomb Yard — the Mega Drive game, remade in Godot"
 run/main_scene="res://main.tscn"
@@ -11,6 +12,10 @@ config/features=PackedStringArray("4.5", "Forward Plus")
 boot_splash/bg_color=Color(0.078, 0.102, 0.2, 1)
 boot_splash/show_image=false
 config/icon="res://icon.png"
+
+[autoload]
+
+UpdateChecker="*res://update_checker.gd"
 
 [display]
 
@@ -38,3 +43,8 @@ anti_aliasing/quality/msaa_3d=2
 lights_and_shadows/directional_shadow/size=4096
 lights_and_shadows/directional_shadow/soft_shadow_filter_quality=3
 environment/defaults/default_clear_color=Color(0.078, 0.102, 0.2, 1)
+
+[update_checker]
+
+repo="martin79grahn/bomb-yard-godot"
+store_url="http://192.168.0.97:8787"
