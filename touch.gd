@@ -118,6 +118,9 @@ func _dpad_bits(p: int, pos: Vector2) -> int:
 func _menu_tap(pos: Vector2) -> void:
 	match main.state:
 		"title":
+			if main.update_rect().has_point(pos):
+				main.check_updates()
+				return
 			for t in 3:
 				if main.title_item_rect(t).has_point(pos):
 					main._set_title_choice(t)

@@ -4,7 +4,7 @@ config_version=5
 
 [application]
 
-config/version="2.1.0"
+config/version="2.2.0"
 config/name="Bomb Yard"
 config/description="Bomb Yard — the Mega Drive game, remade in Godot"
 run/main_scene="res://main.tscn"
@@ -48,3 +48,4 @@ environment/defaults/default_clear_color=Color(0.078, 0.102, 0.2, 1)
 
 repo="martin79grahn/bomb-yard-godot"
 store_url="http://192.168.0.97:8787"
+language="en"

@@ -333,6 +333,8 @@ func _unhandled_input(event: InputEvent) -> void:
 			_save_options()
 		elif event.physical_keycode == KEY_ESCAPE:
 			_back()
+		elif event.physical_keycode == KEY_U and state == "title":
+			check_updates()
 		elif event.physical_keycode == KEY_F11:
 			var w := get_window()
 			w.mode = Window.MODE_WINDOWED if w.mode == Window.MODE_FULLSCREEN else Window.MODE_FULLSCREEN
@@ -1090,6 +1092,18 @@ func _title_frame() -> void:
 		audio.play("menu")
 
 
+## The title screen's "Check for updates" button (U on a keyboard).
+func check_updates() -> void:
+	if UpdateChecker.busy:
+		return
+	audio.play("menu")
+	UpdateChecker.check(true, true)
+
+
+func update_rect() -> Rect2:
+	return Rect2(ox + W - 330, 628, 300, 46)
+
+
 func _set_title_choice(t: int) -> void:
 	rush = t == 2
 	nplayers = 2 if t == 1 else 1
@@ -1361,8 +1375,13 @@ func _draw_title() -> void:
 		label("TAP A MODE TO START" if touch.enabled else "PRESS ENTER TO START", Vector2(W / 2, 600), 26, C_GOLD, HORIZONTAL_ALIGNMENT_CENTER, font_black, 800)
 	if debug:
 		label("DEBUG ON", Vector2(W / 2, 640), 22, Color("#ff7ad0"), HORIZONTAL_ALIGNMENT_CENTER, font_black, 400)
+	var ur := update_rect()
+	ur.position.x -= ox
+	card(ur, C_CARD, C_EDGE, 23)
+	label(UpdateChecker.button_text().to_upper(), Vector2(ur.get_center().x, ur.position.y + 31), 19,
+		C_DIM if UpdateChecker.busy else Color.WHITE, HORIZONTAL_ALIGNMENT_CENTER, font_black, ur.size.x)
 	if not touch.enabled:
-		label("C: debug mode   ·   M: sound   ·   F11: full screen", Vector2(30, 700), 18, Color(1, 1, 1, 0.75))
+		label("C: debug mode   ·   M: sound   ·   F11: full screen   ·   U: updates", Vector2(30, 700), 18, Color(1, 1, 1, 0.75))
 	label("MGRAHN 2026", Vector2(W - 30, 700), 18, Color(1, 1, 1, 0.75), HORIZONTAL_ALIGNMENT_RIGHT)
 
 
