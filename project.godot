@@ -4,7 +4,7 @@ config_version=5
 
 [application]
 
-config/version="2.3.0"
+config/version="2.4.0"
 config/name="Bomb Yard"
 config/description="Bomb Yard — the Mega Drive game, remade in Godot"
 run/main_scene="res://main.tscn"
